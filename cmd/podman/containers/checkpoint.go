@@ -23,7 +23,7 @@ var (
 	checkpointDescription = `
    podman container checkpoint
 
-   Checkpoints one or more running containers. The container name or ID can be used.
+   Checkpoints one or more running containers for test. The container name or ID can be used.
 `
 	checkpointCommand = &cobra.Command{
 		Use:   "checkpoint [options] CONTAINER [CONTAINER...]",
