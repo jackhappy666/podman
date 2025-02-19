@@ -2545,7 +2545,15 @@ func (c *Container) checkReadyForRemoval() error {
 
 // canWithPrevious return the stat of the preCheckPoint dir
 func (c *Container) canWithPrevious() error {
+	logrus.Debugf("canWithPrevious dir:%s", c.PreCheckPointPath())
 	return fileutils.Exists(c.PreCheckPointPath())
+}
+
+// canWithParent return the stat of the preCheckPoint dir
+func (c *Container) canWithParent(imagePath string, parentPath string) error {
+	lastDir := filepath.Dir(imagePath)
+	logrus.Debugf("canWithParent workdir:%s and parent:%s", lastDir, parentPath)
+	return fileutils.Exists(filepath.Join(lastDir, parentPath))
 }
 
 // prepareCheckpointExport writes the config and spec to
@@ -2591,6 +2599,12 @@ func (c *Container) prepareCheckpointExport() error {
 // prepareImageExport writes the config and spec to
 // JSON files for user custom path
 func (c *Container) prepareImageExport(imagePath string) error {
+	logrus.Debug("start to prepare dump info for imagePath")
+
+	if err := os.Mkdir(imagePath, 0755); err != nil {
+		return err
+	}
+
 	networks, err := c.networks()
 	if err != nil {
 		return err
@@ -2607,15 +2621,13 @@ func (c *Container) prepareImageExport(imagePath string) error {
 		networks[net] = opts
 	}
 
-	// create dir for imagepath
-	if err := os.Mkdir(imagePath, 0755); err != nil {
-		logrus.Debug("fail to create dir for checkpoint imagepath")
-		return err
-	}
-
 	// add the networks from the db to the config so that the exported checkpoint still stores all current networks
 	c.config.Networks = networks
 	// save live config
+	if _, err := metadata.WriteJSONFile(c.config, c.bundlePath(), metadata.ConfigDumpFile); err != nil {
+		return err
+	}
+
 	if _, err := metadata.WriteJSONFile(c.config, imagePath, metadata.ConfigDumpFile); err != nil {
 		return err
 	}
@@ -2627,9 +2639,14 @@ func (c *Container) prepareImageExport(imagePath string) error {
 		logrus.Debugf("generating spec for container %q failed with %v", c.ID(), err)
 		return err
 	}
+	if _, err := metadata.WriteJSONFile(g.Config, c.bundlePath(), metadata.SpecDumpFile); err != nil {
+		return err
+	}
 	if _, err := metadata.WriteJSONFile(g.Config, imagePath, metadata.SpecDumpFile); err != nil {
 		return err
 	}
+
+	// save
 
 	return nil
 }

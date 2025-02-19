@@ -723,6 +723,7 @@ func (r *ConmonOCIRuntime) AttachResize(ctr *Container, newSize resize.TerminalS
 // CheckpointContainer checkpoints the given container.
 func (r *ConmonOCIRuntime) CheckpointContainer(ctr *Container, options ContainerCheckpointOptions) (int64, error) {
 	// imagePath is used by CRIU to store the actual checkpoint files
+	logrus.Debug("start to use runc checkpoint")
 	imagePath := ctr.CheckpointPath()
 	if options.PreCheckPoint {
 		imagePath = ctr.PreCheckPointPath()
@@ -739,6 +740,8 @@ func (r *ConmonOCIRuntime) CheckpointContainer(ctr *Container, options Container
 	logrus.Debugf("Writing checkpoint to %s", imagePath)
 	logrus.Debugf("Writing checkpoint logs to %s", workPath)
 	logrus.Debugf("Pre-dump the container %t", options.PreCheckPoint)
+	logrus.Debugf("pre-check dir: %s", filepath.Join("..", preCheckpointDir))
+
 	args := []string{}
 	args = append(args, r.runtimeFlags...)
 	args = append(args, "checkpoint")
@@ -772,7 +775,7 @@ func (r *ConmonOCIRuntime) CheckpointContainer(ctr *Container, options Container
 		args = append(
 			args,
 			"--parent-path",
-			options.ParentPath,
+			filepath.Join("..", options.ParentPath),
 		)
 	}
 

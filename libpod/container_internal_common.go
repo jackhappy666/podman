@@ -1236,19 +1236,23 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 		return nil, 0, err
 	}
 
+	if options.ImagePath != "" {
+		err := crutils.CRCreateFileWithLabel(options.ImagePath, "dump.log", c.MountLabel())
+		if err != nil {
+			return nil, 0, err
+		}
+
+	}
+
 	// Setting CheckpointLog early in case there is a failure.
 	c.state.CheckpointLog = path.Join(c.bundlePath(), "dump.log")
 	c.state.CheckpointPath = c.CheckpointPath()
 
 	// checkpoint container to user specifid path if imagePath exits
 	if options.ImagePath != "" {
-		err := crutils.CRCreateFileWithLabel(options.ImagePath, "dump.log", c.MountLabel())
 		// Setting CheckpointLog early in case there is a failure.
 		c.state.CheckpointLog = path.Join(options.ImagePath, "dump.log")
 		c.state.CheckpointPath = options.ImagePath
-		if err != nil {
-			return nil, 0, err
-		}
 	}
 
 	runtimeCheckpointDuration, err := c.ociRuntime.CheckpointContainer(c, options)
@@ -1256,6 +1260,7 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 		return nil, 0, err
 	}
 
+	logrus.Debug("start to kepp share memory tar")
 	// Keep the content of /dev/shm directory
 	if c.config.ShmDir != "" && c.state.BindMounts["/dev/shm"] == c.config.ShmDir {
 		shmDirTarFileFullPath := filepath.Join(c.bundlePath(), metadata.DevShmCheckpointTar)
@@ -1263,7 +1268,7 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 		if options.ImagePath != "" {
 			shmDirTarFileFullPath = filepath.Join(options.ImagePath, metadata.DevShmCheckpointTar)
 		}
-
+		logrus.Debugf("share memory tar is %s:", shmDirTarFileFullPath)
 		shmDirTarFile, err := os.Create(shmDirTarFileFullPath)
 		if err != nil {
 			return nil, 0, err
@@ -1287,6 +1292,7 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 	// the same IP. Currently limited to one IP address in a container
 	// with one interface.
 	// FIXME: will this break something?
+	logrus.Debug("start to keep network status")
 	if _, err := metadata.WriteJSONFile(c.getNetworkStatus(), c.bundlePath(), metadata.NetworkStatusFile); err != nil {
 		return nil, 0, err
 	}
@@ -1302,9 +1308,17 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 
 	// There is a bug from criu: https://github.com/checkpoint-restore/criu/issues/116
 	// We have to change the symbolic link from absolute path to relative path
+	logrus.Debug("start to change symbolic link for criu parent path")
 	if options.WithPrevious {
 		os.Remove(path.Join(c.CheckpointPath(), "parent"))
 		if err := os.Symlink("../pre-checkpoint", path.Join(c.CheckpointPath(), "parent")); err != nil {
+			return nil, 0, err
+		}
+	}
+
+	if options.ParentPath != "" {
+		os.Remove(path.Join(options.ImagePath, "parent"))
+		if err := os.Symlink(path.Join("..", options.ParentPath), path.Join(options.ImagePath, "parent")); err != nil {
 			return nil, 0, err
 		}
 	}

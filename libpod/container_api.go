@@ -1087,13 +1087,17 @@ func (c *Container) Checkpoint(ctx context.Context, options ContainerCheckpointO
 		}
 	}
 
+	if options.ParentPath != "" {
+		if err := c.canWithParent(options.ImagePath, options.ParentPath); err != nil {
+			return nil, 0, err
+		}
+	}
+
 	if options.ImagePath != "" {
 		if err := c.prepareImageExport(options.ImagePath); err != nil {
 			return nil, 0, err
 		}
 	}
-
-	logrus.Debugln("ready to run c.checkpoint in container_api.go")
 
 	if !c.batched {
 		c.lock.Lock()
@@ -1103,6 +1107,7 @@ func (c *Container) Checkpoint(ctx context.Context, options ContainerCheckpointO
 			return nil, 0, err
 		}
 	}
+
 	return c.checkpoint(ctx, options)
 }
 
