@@ -663,6 +663,8 @@ func (ic *ContainerEngine) ContainerCheckpoint(ctx context.Context, namesOrIds [
 		PrintStats:     options.PrintStats,
 		FileLocks:      options.FileLocks,
 		CreateImage:    options.CreateImage,
+		ImagePath:      options.ImagePath,
+		ParentPath:     options.ParentPath,
 	}
 	// NOTE: all maps to running
 	containers, err := getContainers(ic.Libpod, getContainersOptions{running: options.All, latest: options.Latest, names: namesOrIds})

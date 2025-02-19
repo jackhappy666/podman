@@ -1061,6 +1061,10 @@ type ContainerCheckpointOptions struct {
 	// FileLocks tells the API to checkpoint/restore a container
 	// with file-locks
 	FileLocks bool
+	// custom criu image path
+	ImagePath string
+	// give parentpath in inter
+	ParentPath string
 }
 
 // Checkpoint checkpoints a container
@@ -1082,6 +1086,14 @@ func (c *Container) Checkpoint(ctx context.Context, options ContainerCheckpointO
 			return nil, 0, err
 		}
 	}
+
+	if options.ImagePath != "" {
+		if err := c.prepareImageExport(options.ImagePath); err != nil {
+			return nil, 0, err
+		}
+	}
+
+	logrus.Debugln("ready to run c.checkpoint in container_api.go")
 
 	if !c.batched {
 		c.lock.Lock()

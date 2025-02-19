@@ -727,8 +727,15 @@ func (r *ConmonOCIRuntime) CheckpointContainer(ctr *Container, options Container
 	if options.PreCheckPoint {
 		imagePath = ctr.PreCheckPointPath()
 	}
+
 	// workPath will be used to store dump.log and stats-dump
 	workPath := ctr.bundlePath()
+
+	// if imagepath exits, checkpoint container in it
+	if options.ImagePath != "" {
+		imagePath = options.ImagePath
+		workPath = options.ImagePath
+	}
 	logrus.Debugf("Writing checkpoint to %s", imagePath)
 	logrus.Debugf("Writing checkpoint logs to %s", workPath)
 	logrus.Debugf("Pre-dump the container %t", options.PreCheckPoint)
@@ -759,6 +766,13 @@ func (r *ConmonOCIRuntime) CheckpointContainer(ctr *Container, options Container
 			args,
 			"--parent-path",
 			filepath.Join("..", preCheckpointDir),
+		)
+	}
+	if options.ParentPath != "" {
+		args = append(
+			args,
+			"--parent-path",
+			options.ParentPath,
 		)
 	}
 

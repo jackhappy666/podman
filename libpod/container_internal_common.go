@@ -1240,6 +1240,17 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 	c.state.CheckpointLog = path.Join(c.bundlePath(), "dump.log")
 	c.state.CheckpointPath = c.CheckpointPath()
 
+	// checkpoint container to user specifid path if imagePath exits
+	if options.ImagePath != "" {
+		err := crutils.CRCreateFileWithLabel(options.ImagePath, "dump.log", c.MountLabel())
+		// Setting CheckpointLog early in case there is a failure.
+		c.state.CheckpointLog = path.Join(options.ImagePath, "dump.log")
+		c.state.CheckpointPath = options.ImagePath
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+
 	runtimeCheckpointDuration, err := c.ociRuntime.CheckpointContainer(c, options)
 	if err != nil {
 		return nil, 0, err
@@ -1248,6 +1259,10 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 	// Keep the content of /dev/shm directory
 	if c.config.ShmDir != "" && c.state.BindMounts["/dev/shm"] == c.config.ShmDir {
 		shmDirTarFileFullPath := filepath.Join(c.bundlePath(), metadata.DevShmCheckpointTar)
+
+		if options.ImagePath != "" {
+			shmDirTarFileFullPath = filepath.Join(options.ImagePath, metadata.DevShmCheckpointTar)
+		}
 
 		shmDirTarFile, err := os.Create(shmDirTarFileFullPath)
 		if err != nil {
@@ -1274,6 +1289,13 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 	// FIXME: will this break something?
 	if _, err := metadata.WriteJSONFile(c.getNetworkStatus(), c.bundlePath(), metadata.NetworkStatusFile); err != nil {
 		return nil, 0, err
+	}
+
+	if options.ImagePath != "" {
+		_, err := metadata.WriteJSONFile(c.getNetworkStatus(), options.ImagePath, metadata.NetworkStatusFile)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 
 	defer c.newContainerEvent(events.Checkpoint)
@@ -1317,7 +1339,14 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 			return nil, nil
 		}
 		statsDirectory, err := os.Open(c.bundlePath())
+		if options.ImagePath != "" {
+			statsDirectory, err = os.Open(options.ImagePath)
+		}
+
 		if err != nil {
+			if options.ImagePath != "" {
+				return nil, fmt.Errorf("not able to open %q: %w", options.ImagePath, err)
+			}
 			return nil, fmt.Errorf("not able to open %q: %w", c.bundlePath(), err)
 		}
 
@@ -1348,6 +1377,9 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 		}
 		for _, del := range cleanup {
 			file := filepath.Join(c.bundlePath(), del)
+			if options.ImagePath != "" {
+				file = filepath.Join(options.ImagePath, del)
+			}
 			if err := os.Remove(file); err != nil {
 				logrus.Debugf("Unable to remove file %s", file)
 			}

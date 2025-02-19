@@ -23,7 +23,7 @@ var (
 	checkpointDescription = `
    podman container checkpoint
 
-   Checkpoints one or more running containers for test. The container name or ID can be used.
+   Checkpoints one or more running containers. The container name or ID can be used.
 `
 	checkpointCommand = &cobra.Command{
 		Use:   "checkpoint [options] CONTAINER [CONTAINER...]",
@@ -62,6 +62,14 @@ func init() {
 	exportFlagName := "export"
 	flags.StringVarP(&checkpointOptions.Export, exportFlagName, "e", "", "Export the checkpoint image to a tar.gz")
 	_ = checkpointCommand.RegisterFlagCompletionFunc(exportFlagName, completion.AutocompleteDefault)
+
+	createImagePathName := "image-path"
+	flags.StringVarP(&checkpointOptions.ImagePath, createImagePathName, "", "", "create checkpoint with specified path")
+	_ = checkpointCommand.RegisterFlagCompletionFunc(createImagePathName, completion.AutocompleteNone)
+
+	createParentPathName := "parent-path"
+	flags.StringVarP(&checkpointOptions.ParentPath, createParentPathName, "", "", "create checkpoint with specified parent path")
+	_ = checkpointCommand.RegisterFlagCompletionFunc(createParentPathName, completion.AutocompleteNone)
 
 	flags.BoolVar(&checkpointOptions.IgnoreRootFS, "ignore-rootfs", false, "Do not include root file-system changes when exporting")
 	flags.BoolVar(&checkpointOptions.IgnoreVolumes, "ignore-volumes", false, "Do not export volumes associated with container")

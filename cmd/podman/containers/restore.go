@@ -66,6 +66,14 @@ func init() {
 	flags.StringVar(&restoreOptions.ImportPrevious, importPreviousFlagName, "", "Restore from exported pre-checkpoint archive (tar.gz)")
 	_ = restoreCommand.RegisterFlagCompletionFunc(importPreviousFlagName, completion.AutocompleteDefault)
 
+	importImagePathName := "image-path"
+	flags.StringVarP(&restoreOptions.ImagePath, importImagePathName, "", "", "create checkpoint with specified path")
+	_ = checkpointCommand.RegisterFlagCompletionFunc(importImagePathName, completion.AutocompleteNone)
+
+	importParentPathName := "parent-path"
+	flags.StringVarP(&restoreOptions.ParentPath, importParentPathName, "", "", "create checkpoint with specified path")
+	_ = checkpointCommand.RegisterFlagCompletionFunc(importParentPathName, completion.AutocompleteNone)
+
 	flags.BoolVar(&restoreOptions.IgnoreRootFS, "ignore-rootfs", false, "Do not apply root file-system changes when importing from exported checkpoint")
 	flags.BoolVar(&restoreOptions.IgnoreStaticIP, "ignore-static-ip", false, "Ignore IP address set via --static-ip")
 	flags.BoolVar(&restoreOptions.IgnoreStaticMAC, "ignore-static-mac", false, "Ignore MAC address set via --mac-address")

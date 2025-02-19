@@ -2588,6 +2588,52 @@ func (c *Container) prepareCheckpointExport() error {
 	return nil
 }
 
+// prepareImageExport writes the config and spec to
+// JSON files for user custom path
+func (c *Container) prepareImageExport(imagePath string) error {
+	networks, err := c.networks()
+	if err != nil {
+		return err
+	}
+	// make sure to exclude the short ID alias since the container gets a new ID on restore
+	for net, opts := range networks {
+		newAliases := make([]string, 0, len(opts.Aliases))
+		for _, alias := range opts.Aliases {
+			if alias != c.config.ID[:12] {
+				newAliases = append(newAliases, alias)
+			}
+		}
+		opts.Aliases = newAliases
+		networks[net] = opts
+	}
+
+	// create dir for imagepath
+	if err := os.Mkdir(imagePath, 0755); err != nil {
+		logrus.Debug("fail to create dir for checkpoint imagepath")
+		return err
+	}
+
+	// add the networks from the db to the config so that the exported checkpoint still stores all current networks
+	c.config.Networks = networks
+	// save live config
+	if _, err := metadata.WriteJSONFile(c.config, imagePath, metadata.ConfigDumpFile); err != nil {
+		return err
+	}
+
+	// save spec
+	jsonPath := filepath.Join(c.bundlePath(), "config.json")
+	g, err := generate.NewFromFile(jsonPath)
+	if err != nil {
+		logrus.Debugf("generating spec for container %q failed with %v", c.ID(), err)
+		return err
+	}
+	if _, err := metadata.WriteJSONFile(g.Config, imagePath, metadata.SpecDumpFile); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // SortUserVolumes sorts the volumes specified for a container
 // between named and normal volumes
 func (c *Container) SortUserVolumes(ctrSpec *spec.Spec) ([]*ContainerNamedVolume, []spec.Mount) {
