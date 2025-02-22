@@ -1420,6 +1420,16 @@ func (c *Container) generateContainerSpec() error {
 	return nil
 }
 
+func (c *Container) generateContainerSpecImagePath(imagePath string) error {
+	g := generate.NewFromSpec(c.config.Spec)
+
+	if err := c.saveSpecImagePath(g.Config, imagePath); err != nil {
+		return fmt.Errorf("saving imported container specification for restore failed: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Container) importCheckpointImage(ctx context.Context, imageID string) error {
 	img, _, err := c.Runtime().LibimageRuntime().LookupImage(imageID, nil)
 	if err != nil {
@@ -1469,6 +1479,11 @@ func (c *Container) importCheckpointTar(input string) error {
 	return c.generateContainerSpec()
 }
 
+func (c *Container) importCheckpointImagePath(imagePath string) error {
+
+	return c.generateContainerSpecImagePath(imagePath)
+}
+
 func (c *Container) importPreCheckpoint(input string) error {
 	archiveFile, err := os.Open(input)
 	if err != nil {
@@ -1485,6 +1500,7 @@ func (c *Container) importPreCheckpoint(input string) error {
 }
 
 func (c *Container) restore(ctx context.Context, options ContainerCheckpointOptions) (criuStatistics *define.CRIUCheckpointRestoreStatistics, runtimeRestoreDuration int64, retErr error) {
+	logrus.Debug("start to restore, in /home/jiahao/repo/podman/libpod/container_internal_common.go/restore")
 	minCriuVersion := func() int {
 		if options.Pod == "" {
 			return criu.MinCriuVersion
@@ -1503,12 +1519,15 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 		return nil, 0, fmt.Errorf("container %s is running or paused, cannot restore: %w", c.ID(), define.ErrCtrStateInvalid)
 	}
 
+	logrus.Debug("start to untar current or previous if it exits")
+	//untar previous to c.bundlePath
 	if options.ImportPrevious != "" {
 		if err := c.importPreCheckpoint(options.ImportPrevious); err != nil {
 			return nil, 0, err
 		}
 	}
 
+	//untar current to c.bundlePath
 	if options.TargetFile != "" {
 		if err := c.importCheckpointTar(options.TargetFile); err != nil {
 			return nil, 0, err
@@ -1517,21 +1536,47 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 		if err := c.importCheckpointImage(ctx, options.CheckpointImageID); err != nil {
 			return nil, 0, err
 		}
+	} else if options.ImagePath != "" {
+		if err := c.importCheckpointImagePath(options.ImagePath); err != nil {
+			return nil, 0, err
+		}
 	}
 
 	// Let's try to stat() CRIU's inventory file. If it does not exist, it makes
 	// no sense to try a restore. This is a minimal check if a checkpoint exists.
-	if err := fileutils.Exists(filepath.Join(c.CheckpointPath(), "inventory.img")); errors.Is(err, fs.ErrNotExist) {
+	checkpointPath := c.CheckpointPath()
+	if options.ImagePath != "" {
+		checkpointPath = options.ImagePath
+	}
+	if err := fileutils.Exists(filepath.Join(checkpointPath, "inventory.img")); errors.Is(err, fs.ErrNotExist) {
 		return nil, 0, fmt.Errorf("a complete checkpoint for this container cannot be found, cannot restore: %w", err)
 	}
 
-	if err := crutils.CRCreateFileWithLabel(c.bundlePath(), "restore.log", c.MountLabel()); err != nil {
+	logrus.Debug("start to CRCreateFileWithLabel")
+	bundlePath := c.bundlePath()
+	if options.ImagePath != "" {
+		bundlePath = options.ImagePath
+	}
+	if err := crutils.CRCreateFileWithLabel(bundlePath, "restore.log", c.MountLabel()); err != nil {
 		return nil, 0, err
 	}
 
+	// if options.ImagePath != "" {
+	// 	if err := crutils.CRCreateFileWithLabel(options.ImagePath, "restore.log", c.MountLabel()); err != nil {
+	// 		return nil, 0, err
+	// 	}
+	// }
+
 	// Setting RestoreLog early in case there is a failure.
-	c.state.RestoreLog = path.Join(c.bundlePath(), "restore.log")
-	c.state.CheckpointPath = c.CheckpointPath()
+	c.state.RestoreLog = path.Join(bundlePath, "restore.log")
+	c.state.CheckpointPath = checkpointPath
+
+	// if options.ImagePath != "" {
+	// 	c.state.RestoreLog = path.Join(options.ImagePath, "restore.log")
+	// 	c.state.CheckpointPath = options.ImagePath
+	// }
+
+	logrus.Debugf("RestoreLog is %s and CheckpointPath is %s", c.state.RestoreLog, c.state.CheckpointPath)
 
 	if options.IgnoreStaticIP || options.IgnoreStaticMAC {
 		networks, err := c.networks()
@@ -1554,7 +1599,7 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 
 	// Read network configuration from checkpoint
 	var netStatus map[string]types.StatusBlock
-	_, err := metadata.ReadJSONFile(&netStatus, c.bundlePath(), metadata.NetworkStatusFile)
+	_, err := metadata.ReadJSONFile(&netStatus, bundlePath, metadata.NetworkStatusFile)
 	if err != nil {
 		logrus.Infof("Failed to unmarshal network status, cannot restore the same ip/mac: %v", err)
 	}
@@ -1564,6 +1609,8 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 	// TODO: This implicit restoring with or without IP depending on an
 	//       unrelated restore parameter (--name) does not seem like the
 	//       best solution.
+
+	logrus.Debug("start to restore network from network.status")
 	if err == nil && options.Name == "" && (!options.IgnoreStaticIP || !options.IgnoreStaticMAC) {
 		// The file with the network.status does exist. Let's restore the
 		// container with the same networks settings as during checkpointing.
@@ -1608,8 +1655,9 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 		return nil, 0, err
 	}
 
+	logrus.Debug("start to read config.json to bundlePath, i'm note sure if change bundlePath to imagePath")
 	// Read config
-	jsonPath := filepath.Join(c.bundlePath(), "config.json")
+	jsonPath := filepath.Join(bundlePath, "config.json")
 	logrus.Debugf("generate.NewFromFile at %v", jsonPath)
 	g, err := generate.NewFromFile(jsonPath)
 	if err != nil {
@@ -1618,7 +1666,11 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 	}
 
 	// Restoring from an import means that we are doing migration
-	if options.TargetFile != "" || options.CheckpointImageID != "" {
+	// if options.TargetFile != "" || options.CheckpointImageID != "" {
+	// 	g.SetRootPath(c.state.Mountpoint)
+	// }
+	logrus.Debug("g.SetRootPath(c.state.Mountpoint) add options.imagePath")
+	if options.TargetFile != "" || options.CheckpointImageID != "" || options.ImagePath != "" {
 		g.SetRootPath(c.state.Mountpoint)
 	}
 
@@ -1708,7 +1760,8 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 		return nil, 0, err
 	}
 
-	if options.TargetFile != "" || options.CheckpointImageID != "" {
+	logrus.Debug("add options.TargetFile != nil to BindMounts")
+	if options.TargetFile != "" || options.CheckpointImageID != "" || options.ImagePath != "" {
 		for dstPath, srcPath := range c.state.BindMounts {
 			newMount := spec.Mount{
 				Type:        define.TypeBind,
@@ -1728,9 +1781,10 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 		}
 	}
 
+	logrus.Debug("start to restore /dev/shm content")
 	// Restore /dev/shm content
 	if c.config.ShmDir != "" && c.state.BindMounts["/dev/shm"] == c.config.ShmDir {
-		shmDirTarFileFullPath := filepath.Join(c.bundlePath(), metadata.DevShmCheckpointTar)
+		shmDirTarFileFullPath := filepath.Join(bundlePath, metadata.DevShmCheckpointTar)
 		if err := fileutils.Exists(shmDirTarFileFullPath); err != nil {
 			logrus.Debug("Container checkpoint doesn't contain dev/shm: ", err.Error())
 		} else {
@@ -1751,11 +1805,17 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 		return nil, 0, err
 	}
 
+	logrus.Debug("start to write config.json in jsonPath")
 	// Save the OCI spec to disk
 	if err := c.saveSpec(g.Config); err != nil {
 		return nil, 0, err
 	}
 
+	if err := c.saveSpecImagePath(g.Config, options.ImagePath); err != nil {
+		return nil, 0, err
+	}
+
+	logrus.Debug("start to untar volume to bundlePath if not IgnoreVolumes and TargetFile")
 	// When restoring from an imported archive, allow restoring the content of volumes.
 	// Volumes are created in setupContainer()
 	if !options.IgnoreVolumes && (options.TargetFile != "" || options.CheckpointImageID != "") {
@@ -1786,6 +1846,7 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 		}
 	}
 
+	logrus.Debug("start to IgnoreRootfs if not IgnoreRootfs")
 	// Before actually restarting the container, apply the root file-system changes
 	if !options.IgnoreRootfs {
 		if err := crutils.CRApplyRootFsDiffTar(c.bundlePath(), c.state.Mountpoint); err != nil {
@@ -1811,13 +1872,15 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 		return nil, 0, err
 	}
 
+	logrus.Debug("start record criuStatistics")
+
 	criuStatistics, err = func() (*define.CRIUCheckpointRestoreStatistics, error) {
 		if !options.PrintStats {
 			return nil, nil
 		}
-		statsDirectory, err := os.Open(c.bundlePath())
+		statsDirectory, err := os.Open(bundlePath)
 		if err != nil {
-			return nil, fmt.Errorf("not able to open %q: %w", c.bundlePath(), err)
+			return nil, fmt.Errorf("not able to open %q: %w", bundlePath, err)
 		}
 
 		restoreStatistics, err := stats.CriuGetRestoreStats(statsDirectory)

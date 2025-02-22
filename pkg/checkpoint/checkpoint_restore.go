@@ -42,9 +42,20 @@ func CRImportCheckpointTar(ctx context.Context, runtime *libpod.Runtime, restore
 	return CRImportCheckpoint(ctx, runtime, restoreOptions, dir)
 }
 
+func CRImportCheckpointimagePath(ctx context.Context, runtime *libpod.Runtime, restoreOptions entities.RestoreOptions, dir string) ([]*libpod.Container, error) {
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("invalid --image-path: %q is not a directory", dir)
+	}
+
+	return CRImportCheckpoint(ctx, runtime, restoreOptions, dir)
+
+}
+
 // CRImportCheckpoint it the function which imports the information
 // from checkpoint tarball and re-creates the container from that information
 func CRImportCheckpoint(ctx context.Context, runtime *libpod.Runtime, restoreOptions entities.RestoreOptions, dir string) ([]*libpod.Container, error) {
+	logrus.Debug("start to load container according to spec in /pkg/checkpoint/checkpoint_restore.go/CRImportCheckpoint")
 	// Load spec.dump from temporary directory
 	dumpSpec := new(spec.Spec)
 	if _, err := metadata.ReadJSONFile(dumpSpec, dir, metadata.SpecDumpFile); err != nil {

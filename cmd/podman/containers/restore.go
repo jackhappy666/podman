@@ -135,12 +135,12 @@ func restore(cmd *cobra.Command, args []string) error {
 	if notImport && restoreOptions.ImportPrevious != "" {
 		return fmt.Errorf("--import-previous can only be used with image or --import")
 	}
-	if notImport && restoreOptions.IgnoreRootFS {
-		return fmt.Errorf("--ignore-rootfs can only be used with image or --import")
-	}
-	if notImport && restoreOptions.IgnoreVolumes {
-		return fmt.Errorf("--ignore-volumes can only be used with image or --import")
-	}
+	// if notImport && restoreOptions.IgnoreRootFS {
+	// 	return fmt.Errorf("--ignore-rootfs can only be used with image or --import")
+	// }
+	// if notImport && restoreOptions.IgnoreVolumes {
+	// 	return fmt.Errorf("--ignore-volumes can only be used with image or --import")
+	// }
 	if notImport && restoreOptions.Name != "" {
 		return fmt.Errorf("--name can only be used with image or --import")
 	}
@@ -149,6 +149,9 @@ func restore(cmd *cobra.Command, args []string) error {
 	}
 	if restoreOptions.Name != "" && restoreOptions.TCPEstablished {
 		return fmt.Errorf("--tcp-established cannot be used with --name")
+	}
+	if restoreOptions.ParentPath != "" && restoreOptions.ImagePath == "" {
+		return fmt.Errorf("--parent-path requires --image-path to be set")
 	}
 
 	inputPorts, err := cmd.Flags().GetStringSlice("publish")

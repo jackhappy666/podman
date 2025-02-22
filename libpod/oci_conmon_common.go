@@ -764,13 +764,22 @@ func (r *ConmonOCIRuntime) CheckpointContainer(ctr *Container, options Container
 	if options.PreCheckPoint {
 		args = append(args, "--pre-dump")
 	}
+	// if !options.PreCheckPoint && options.WithPrevious {
+	// 	args = append(
+	// 		args,
+	// 		"--parent-path",
+	// 		filepath.Join("..", preCheckpointDir),
+	// 	)
+	// }
+
 	if !options.PreCheckPoint && options.WithPrevious {
 		args = append(
 			args,
 			"--parent-path",
-			filepath.Join("..", preCheckpointDir),
+			filepath.Join("..", options.ParentPath),
 		)
 	}
+
 	if options.ParentPath != "" {
 		args = append(
 			args,
@@ -990,12 +999,15 @@ func getPreserveFdExtraFiles(preserveFD []uint, preserveFDs uint) (uint, []*os.F
 func (r *ConmonOCIRuntime) createOCIContainer(ctr *Container, restoreOptions *ContainerCheckpointOptions) (int64, error) {
 	var stderrBuf bytes.Buffer
 
+	logrus.Debug("start to use runc restore container in /libpod/oci_conmon_common.go/")
+
 	parentSyncPipe, childSyncPipe, err := newPipe()
 	if err != nil {
 		return 0, fmt.Errorf("creating socket pair: %w", err)
 	}
 	defer errorhandling.CloseQuiet(parentSyncPipe)
 
+	logrus.Debug("1")
 	childStartPipe, parentStartPipe, err := newPipe()
 	if err != nil {
 		return 0, fmt.Errorf("creating socket pair for start pipe: %w", err)
@@ -1008,28 +1020,36 @@ func (r *ConmonOCIRuntime) createOCIContainer(ctr *Container, restoreOptions *Co
 		ociLog = filepath.Join(ctr.state.RunDir, "oci-log")
 	}
 
+	logrus.Debug("2")
 	logTag, err := r.getLogTag(ctr)
 	if err != nil {
 		return 0, err
 	}
 
+	logrus.Debug("3")
 	if ctr.config.CgroupsMode == cgroupSplit {
 		if err := moveToRuntimeCgroup(); err != nil {
 			return 0, err
 		}
 	}
 
+	logrus.Debug("4")
 	pidfile := ctr.config.PidFile
 	if pidfile == "" {
 		pidfile = filepath.Join(ctr.state.RunDir, "pidfile")
 	}
 
+	logrus.Debug("fuck1")
 	persistDir := filepath.Join(r.persistDir, ctr.ID())
+	logrus.Debug("fuck2")
+
 	args, err := r.sharedConmonArgs(ctr, ctr.ID(), ctr.bundlePath(), pidfile, ctr.LogPath(), r.exitsDir, persistDir, ociLog, ctr.LogDriver(), logTag)
+	logrus.Debug("fuck3")
 	if err != nil {
 		return 0, err
 	}
 
+	logrus.Debug("5")
 	if ctr.config.SdNotifyMode == define.SdNotifyModeContainer && ctr.config.SdNotifySocket != "" {
 		args = append(args, fmt.Sprintf("--sdnotify-socket=%s", ctr.config.SdNotifySocket))
 	}
@@ -1090,7 +1110,11 @@ func (r *ConmonOCIRuntime) createOCIContainer(ctr *Container, restoreOptions *Co
 	}
 
 	if restoreOptions != nil {
-		args = append(args, "--restore", ctr.CheckpointPath())
+		checkpointPath := ctr.CheckpointPath()
+		if restoreOptions.ImagePath != "" {
+			checkpointPath = restoreOptions.ImagePath
+		}
+		args = append(args, "--restore", checkpointPath)
 		if restoreOptions.TCPEstablished {
 			args = append(args, "--runtime-opt", "--tcp-established")
 		}
@@ -1121,6 +1145,29 @@ func (r *ConmonOCIRuntime) createOCIContainer(ctr *Container, restoreOptions *Co
 				)
 			}
 		}
+		// logrus.Debug("in /libpod/oci_conmon_common.go/oci_conmon_common")
+		// if restoreOptions.ImagePath != "" {
+		// 	logrus.Debugf("start load to criu for imagepath:%s", restoreOptions.ImagePath)
+		// 	args = append(
+		// 		args,
+		// 		"--runtime-opt",
+		// 		fmt.Sprintf(
+		// 			"--image-path=%s",
+		// 			restoreOptions.ImagePath,
+		// 		),
+		// 	)
+		// }
+		// if restoreOptions.ParentPath != "" {
+		// 	logrus.Debugf("start load to criu for parentpath:%s", restoreOptions.ParentPath)
+		// 	args = append(
+		// 		args,
+		// 		"--runtime-opt",
+		// 		fmt.Sprintf(
+		// 			"--parent-path=%s",
+		// 			restoreOptions.ParentPath,
+		// 		),
+		// 	)
+		// }
 	}
 
 	logrus.WithFields(logrus.Fields{
@@ -1131,6 +1178,7 @@ func (r *ConmonOCIRuntime) createOCIContainer(ctr *Container, restoreOptions *Co
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}
+	logrus.Debug("6")
 	// TODO this is probably a really bad idea for some uses
 	// Make this configurable
 	cmd.Stdin = os.Stdin
@@ -1295,6 +1343,7 @@ func (r *ConmonOCIRuntime) sharedConmonArgs(ctr *Container, cuuid, bundlePath, p
 	// This is needed as conmon writes the exit and oom file in the given persist directory path as just "exit" and "oom"
 	// So creating a directory with the container ID under the persist dir will help keep track of which container the
 	// exit and oom files belong to.
+	logrus.Debug("sharedConmonArgs")
 	if err := os.MkdirAll(persistDir, 0750); err != nil {
 		return nil, fmt.Errorf("creating OCI runtime oom files directory for ctr %q: %w", ctr.ID(), err)
 	}

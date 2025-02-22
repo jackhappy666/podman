@@ -706,6 +706,8 @@ func (ic *ContainerEngine) ContainerRestore(ctx context.Context, namesOrIds []st
 		Pod:             options.Pod,
 		PrintStats:      options.PrintStats,
 		FileLocks:       options.FileLocks,
+		ImagePath:       options.ImagePath,
+		ParentPath:      options.ParentPath,
 	}
 
 	filterFuncs := []libpod.ContainerFilter{
@@ -715,6 +717,7 @@ func (ic *ContainerEngine) ContainerRestore(ctx context.Context, namesOrIds []st
 		},
 	}
 
+	logrus.Debug("start switch options in /pkg/domain/infra/abi/containers.go/containers.go")
 	idToRawInput := map[string]string{}
 	switch {
 	case options.Import != "":
@@ -730,6 +733,8 @@ func (ic *ContainerEngine) ContainerRestore(ctx context.Context, namesOrIds []st
 		for i := range containers {
 			ctrs = append(ctrs, containers[i].Container)
 		}
+	case options.ImagePath != "":
+		ctrs, err = checkpoint.CRImportCheckpoint(ctx, ic.Libpod, options, options.ImagePath)
 	default:
 		for _, nameOrID := range namesOrIds {
 			logrus.Debugf("look up container: %q", nameOrID)

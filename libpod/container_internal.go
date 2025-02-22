@@ -2329,10 +2329,43 @@ func (c *Container) writeStringToStaticDir(filename, contents string) (string, e
 
 // saveSpec saves the OCI spec to disk, replacing any existing specs for the container
 func (c *Container) saveSpec(spec *spec.Spec) error {
-	// If the OCI spec already exists, we need to replace it
+	// If the OCI spec already exists, we need to replace itssss
 	// Cannot guarantee some things, e.g. network namespaces, have the same
 	// paths
 	jsonPath := filepath.Join(c.bundlePath(), "config.json")
+	if err := fileutils.Exists(jsonPath); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("doing stat on container %s spec: %w", c.ID(), err)
+		}
+		// The spec does not exist, we're fine
+	} else {
+		// The spec exists, need to remove it
+		if err := os.Remove(jsonPath); err != nil {
+			return fmt.Errorf("replacing runtime spec for container %s: %w", c.ID(), err)
+		}
+	}
+
+	fileJSON, err := json.Marshal(spec)
+	if err != nil {
+		return fmt.Errorf("exporting runtime spec for container %s to JSON: %w", c.ID(), err)
+	}
+	if err := os.WriteFile(jsonPath, fileJSON, 0644); err != nil {
+		return fmt.Errorf("writing runtime spec JSON for container %s to disk: %w", c.ID(), err)
+	}
+
+	logrus.Debugf("Created OCI spec for container %s at %s", c.ID(), jsonPath)
+
+	c.state.ConfigPath = jsonPath
+
+	return nil
+}
+
+// saveSpec saves the OCI spec to disk, replacing any existing specs for the container
+func (c *Container) saveSpecImagePath(spec *spec.Spec, imagePath string) error {
+	// If the OCI spec already exists, we need to replace it
+	// Cannot guarantee some things, e.g. network namespaces, have the same
+	// paths
+	jsonPath := filepath.Join(imagePath, "config.json")
 	if err := fileutils.Exists(jsonPath); err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("doing stat on container %s spec: %w", c.ID(), err)
@@ -2550,10 +2583,8 @@ func (c *Container) canWithPrevious() error {
 }
 
 // canWithParent return the stat of the preCheckPoint dir
-func (c *Container) canWithParent(imagePath string, parentPath string) error {
-	lastDir := filepath.Dir(imagePath)
-	logrus.Debugf("canWithParent workdir:%s and parent:%s", lastDir, parentPath)
-	return fileutils.Exists(filepath.Join(lastDir, parentPath))
+func (c *Container) canWithParent(parentPath string) error {
+	return fileutils.Exists(filepath.Join(c.bundlePath(), parentPath))
 }
 
 // prepareCheckpointExport writes the config and spec to

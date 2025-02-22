@@ -1087,11 +1087,17 @@ func (c *Container) Checkpoint(ctx context.Context, options ContainerCheckpointO
 		}
 	}
 
-	if options.ParentPath != "" {
-		if err := c.canWithParent(options.ImagePath, options.ParentPath); err != nil {
-			return nil, 0, err
-		}
-	}
+	// if options.ParentPath != "" {
+	// 	if err := c.canWithParent(options.ImagePath, options.ParentPath); err != nil {
+	// 		return nil, 0, err
+	// 	}
+	// }
+
+	// if options.ParentPath != "" {
+	// 	if err := c.canWithParent(options.ParentPath); err != nil {
+	// 		return nil, 0, err
+	// 	}
+	// }
 
 	if options.ImagePath != "" {
 		if err := c.prepareImageExport(options.ImagePath); err != nil {
