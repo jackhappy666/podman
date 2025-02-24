@@ -1874,6 +1874,11 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 
 	logrus.Debug("start record criuStatistics")
 
+	if (options.ImagePath) != "" {
+		copyFile(filepath.Join(c.bundlePath(), "stats-restore"), filepath.Join(options.ImagePath, "stats-restore"))
+		copyFile(filepath.Join(c.bundlePath(), "restore.log"), filepath.Join(options.ImagePath, "restore.log"))
+	}
+
 	criuStatistics, err = func() (*define.CRIUCheckpointRestoreStatistics, error) {
 		if !options.PrintStats {
 			return nil, nil
@@ -1948,6 +1953,42 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 	}
 
 	return criuStatistics, runtimeRestoreDuration, c.save()
+}
+
+func copyFile(src, dst string) error {
+	// 打开源文件
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("打开源文件失败: %v", err)
+	}
+	defer sourceFile.Close()
+
+	// 创建目标文件
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("创建目标文件失败: %v", err)
+	}
+	defer destFile.Close()
+
+	// 使用 io.Copy 复制文件内容
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return fmt.Errorf("复制文件内容失败: %v", err)
+	}
+
+	// 获取源文件的元数据（如权限）并应用到目标文件
+	sourceInfo, err := sourceFile.Stat()
+	if err != nil {
+		return fmt.Errorf("获取源文件信息失败: %v", err)
+	}
+
+	// 设置目标文件的权限
+	err = os.Chmod(dst, sourceInfo.Mode())
+	if err != nil {
+		return fmt.Errorf("设置目标文件权限失败: %v", err)
+	}
+
+	return nil
 }
 
 // Retrieves a container's "root" net namespace container dependency.
